@@ -172,6 +172,7 @@ define token instr(32)
 	p        = (19,19)
 	rd       = (25,29)
 	rd_d     = (25,29)
+	rd_odd   = (25,29)
 	rd_asr   = (25,29)
 	rd_zero  = (25,29)
 	fsrd     = (25,29)
@@ -235,6 +236,17 @@ attach variables [ rd_d ] [
                                   o0_1 _ o2_3 _ o4_5 _ sp_7 _
                                   l0_1 _ l2_3 _ l4_5 _ l6_7 _
                                   i0_1 _ i2_3 _ i4_5 _ fp_7 _
+                                  ];
+
+# Odd (second) register of each ldd/std/ldda/stda pair. Used to lift the
+# doubleword as two independent 4-byte ops (even half -> [ea], odd half ->
+# [ea+4]) so the decompiler tracks the two 32-bit halves separately instead
+# of an 8-byte register pair that surfaces as CONCAT44 in the output.
+attach variables [ rd_odd ] [
+                                  g1 _ g3 _ g5 _ g7 _
+                                  o1 _ o3 _ o5 _ o7 _
+                                  l1 _ l3 _ l5 _ l7 _
+                                  i1 _ i3 _ i5 _ i7 _
                                   ];
 
 @endif
@@ -577,7 +589,7 @@ macro unpackflags(ccr) {
 @if SIZE=="8"
 :ldd ea,RD                           is op=3 & RD & op3=0x03 & ea { RD = *:$(SIZE) ea; }
 @else
-:ldd ea,RD                           is op=3 & RD & rd_d & op3=0x03 & ea { rd_d = *:8 ea; }
+:ldd ea,RD                           is op=3 & RD & rd_odd & op3=0x03 & ea { local addr:$(SIZE) = ea; RD = *:4 addr; rd_odd = *:4 (addr + 4); }
 
 @endif
 
@@ -589,7 +601,11 @@ macro unpackflags(ccr) {
 :lduwa ea_alt,RD                     is op=3 & RD & op3=0x10 & ea_alt  { RD = zext(*:4 ea_alt); }
 
 :ldxa ea_alt,RD                      is op=3 & RD & op3=0x1b & ea_alt  { RD = *:$(SIZE) ea_alt; }
+@if SIZE=="8"
 :ldda ea_alt,RD                      is op=3 & RD & op3=0x13 & ea_alt  { RD = *:$(SIZE) ea_alt; }
+@else
+:ldda ea_alt,RD                      is op=3 & RD & rd_odd & op3=0x13 & ea_alt  { local addr:$(SIZE) = ea_alt; RD = *:4 addr; rd_odd = *:4 (addr + 4); }
+@endif
 
 #-----------------
 :stb RD,ea                           is op=3 & RD & op3=0x05 & ea { *ea = RD:1; } 
@@ -602,7 +618,7 @@ macro unpackflags(ccr) {
 @else
 # size = 4, but this extended store instruction needs to write 8 bytes
 :stx RD,ea                           is op=3 & RD & rd_d & op3=0x0e & ea { *ea = rd_d; }
-:std RD,ea                           is op=3 & RD & rd_d & op3=0x07 & ea { *ea = rd_d; }
+:std RD,ea                           is op=3 & RD & rd_odd & op3=0x07 & ea { local addr:$(SIZE) = ea; *:4 addr = RD; *:4 (addr + 4) = rd_odd; }
 @endif
 
 :clrx ea                             is op=3 & rd=0 & op3=0x0e & ea { *ea = 0:8; }
@@ -612,7 +628,11 @@ macro unpackflags(ccr) {
 :stha RD,ea_alt                      is op=3 & RD & op3=0x16 & ea_alt { *ea_alt = RD:2; } 
 :stwa RD,ea_alt                      is op=3 & RD & op3=0x14 & ea_alt { *ea_alt = RD:4; } 
 :stxa RD,ea_alt                      is op=3 & RD & op3=0x1e & ea_alt { *ea_alt = RD; } 
-:stda RD,ea_alt                      is op=3 & RD & op3=0x17 & ea_alt { *ea_alt = RD; } 
+@if SIZE=="8"
+:stda RD,ea_alt                      is op=3 & RD & op3=0x17 & ea_alt { *ea_alt = RD; }
+@else
+:stda RD,ea_alt                      is op=3 & RD & rd_odd & op3=0x17 & ea_alt { local addr:$(SIZE) = ea_alt; *:4 addr = RD; *:4 (addr + 4) = rd_odd; }
+@endif
 # ---------------
 
 :sub RS1,regorimm,RD                 is op=2 & RD & op3=0x4 & RS1 & regorimm 
