@@ -1956,9 +1956,21 @@ int4 ActionReturnRecovery::apply(Funcdata &data)
 	if (trial.isChecked()) continue; // Already checked
 	int4 slot = trial.getSlot();
 	vn = op->getIn(slot);
-	if (ancestorReal.execute(op,slot,&trial,false))
-	  if (data.ancestorOpUse(maxancestor,vn,op,trial,0,0))
+	// Use allowFail=true, as register parameter recovery does
+	// (FuncCallSpecs::checkInputTrialUse), so that a return value which is solid
+	// on the main path but killed on a conditionally executed edge -- a retguard
+	// trap, or a conditional noreturn/abort -- is still recovered instead of
+	// being suppressed to a void return. Without this, AncestorRealistic sees
+	// both a "solid" and a "failkill" in the return MULTIEQUAL and, with
+	// allowFail=false, fails outright rather than attributing the kill to
+	// conditional execution.
+	if (ancestorReal.execute(op,slot,&trial,true)) {
+	  if (data.ancestorOpUse(maxancestor,vn,op,trial,0,0)) {
 	    trial.markActive(); // This varnode sees active use as a parameter
+	    if (trial.hasCondExeEffect())
+	      active->markNeedsFinalCheck();
+	  }
+	}
 	count += 1;
       }
     }
