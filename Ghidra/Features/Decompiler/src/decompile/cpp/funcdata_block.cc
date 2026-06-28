@@ -384,11 +384,42 @@ bool Funcdata::removeUnreachableBlocks(bool issuewarning,bool checkexistence)
     if (bblocks.getBlock(i)->isEntryPoint()) break;
   bblocks.collectReachable(list,bblocks.getBlock(i),true); // Collect (un)reachable blocks
 
-  for(i=0;i<list.size();++i) {
+  for(i=0;i<list.size();++i)
     list[i]->setDead();
-    if (issuewarning) {
-      ostringstream s;
+
+  if (issuewarning) {
+    // Collect the instruction addresses that survive in reachable blocks.
+    set<Address> liveaddr;
+    for(uint4 j=0;j<bblocks.getSize();++j) {
+      BlockBasic *bb = (BlockBasic *)bblocks.getBlock(j);
+      if (bb->isDead()) continue;
+      std::list<PcodeOp *>::const_iterator oiter;
+      for(oiter=bb->beginOp();oiter!=bb->endOp();++oiter)
+	liveaddr.insert((*oiter)->getAddr());
+    }
+
+    for(i=0;i<list.size();++i) {
       BlockBasic *bb = (BlockBasic *)list[i];
+      // A removed block whose every op shares an address with a reachable block
+      // is not unreachable machine code.  It is dead p-code left within a single
+      // instruction's lifting, where another arm of that instruction survives.
+      // A common source is a conditional control-flow arm that folds to a
+      // constant, such as the `return [o7]` tail emitted for a SPARC call whose
+      // delay slot is not a restore.  Warning on these is noise.  Warn only when
+      // the block holds an op at an address that survives nowhere, meaning a
+      // whole machine instruction is genuinely unreachable.  That preserves the
+      // warning as a check against real dead code and mis-folded conditionals.
+      bool wholeInstrUnreachable = false;
+      std::list<PcodeOp *>::const_iterator oiter;
+      for(oiter=bb->beginOp();oiter!=bb->endOp();++oiter) {
+	if (liveaddr.find((*oiter)->getAddr()) == liveaddr.end()) {
+	  wholeInstrUnreachable = true;
+	  break;
+	}
+      }
+      if (!wholeInstrUnreachable) continue;
+
+      ostringstream s;
       s << "Removing unreachable block (";
       s << bb->getStart().getSpace()->getName();
       s << ',';
