@@ -1134,9 +1134,12 @@ trap: RS1+swtrap  is i=1 & RS1 & swtrap { local tmp = ((RS1 + swtrap) & 0x7F); e
 :t^tcc TICC, trap                    is op=0x2 & op3=0x3a & tcc & TICC & trap
 {
 	if (!tcc) goto inst_next;
-	local dest:$(SIZE) = sw_trap(trap);
-	# trap should fall thru by default, can be over-ridden to a branch/call-return
-	call [dest];
+	# Conditional software trap (Tcc). Model as a volatile side-effect intrinsic
+	# rather than `call [sw_trap(trap)]`: the call form binds %o0..%o5 as call
+	# args and consumes/redefines %o0, which destroys return-value recovery for
+	# every retguard-protected function (e.g. tneg 0x70). Code that uses Tcc as
+	# an error or guard trap, not as a returning syscall, is modeled correctly.
+	sw_trap(trap);
 }
 
 membar_mask:  is cmask & mmask { tmp:1 = (cmask << 4) | mmask; export tmp; }
