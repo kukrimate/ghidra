@@ -29,7 +29,7 @@
   <stackpointer register="sp" space="ram"/>
   <default_proto>
     <prototype name="__stdcall" extrapop="0" stackshift="0">
-      <input>
+      <input killedbycall="true">
 	    <pentry minsize="4" maxsize="4" storage="hiddenret">
 	      <addr offset="64" space="stack"/>
 	    </pentry>
@@ -67,7 +67,7 @@
 	  <join storage="general"/>  <!-- join is NOT aligned -->
 	</rule>
       </input>
-      <output>
+      <output killedbycall="true">
         <pentry minsize="1" maxsize="4" metatype="float">
           <register name="fs0"/>
         </pentry>
@@ -125,6 +125,17 @@
         <register name="sp"/>
         <register name="didrestore"/>
       </unaffected>
+      <killedbycall>
+        <!-- The %o argument/return registers (o0-o5) and the return register
+             (o0/o1) are killed-by-call via killedbycall="true" on the input and
+             output param lists above. %o7 (the link register, written by every
+             CALL) is not in those lists, so list it explicitly. Without these,
+             these caller-saved registers default to "unknown_effect", which lets
+             RuleIndirectCollapse alias a call's clobbered register back onto the
+             live pre-call value (e.g. a function's return register impersonating
+             an input pointer), corrupting downstream dataflow. -->
+        <register name="o7"/>
+      </killedbycall>
       <localrange>
         <range space="stack" first="0xfff0bdc1" last="0xffffffff"/>
         <range space="stack" first="0x0" last="0x5b"/>   <!-- Stack storage for register window -->
